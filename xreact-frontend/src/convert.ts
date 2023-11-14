@@ -3,6 +3,7 @@ import { XReactComponent } from "./XReactComponent";
 import { createElement } from "react";
 import { XObject } from "./xobject";
 import { network } from "./socket";
+import { Xinput } from "./xcomponents/xinput";
 
 // Converts any object to serializable object
 // If object is not serializable, it will be discarded
@@ -54,11 +55,14 @@ export async function convert(xelement: any): Promise<JSX.Element|string> {
     }
 	const children = await Promise.all(xelement.children.map((child: any) => {
 		if (typeof child === 'number') {
-			return createElement(XReactComponent, {xobject: new XObject(child, network)});
+			return createElement(XReactComponent, {xobject: new XObject(child, network), key: child});
 		} else {
 			return convert(child);
 		}
 	}));
+	if (xelement.tag === 'input') {
+		xelement.tag = Xinput;
+	}
 	return createElement(
 		xelement.tag,
 		xelement.props,
