@@ -1,5 +1,5 @@
 import { io } from 'socket.io-client';
-const socket = io('http://code.cykim.site:7003');
+const socket = io();
 
 const requests: { [key: string]: any } = {};
 

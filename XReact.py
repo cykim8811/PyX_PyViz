@@ -117,7 +117,6 @@ class RequestHandler:
 def host(root, port):
     requestHandler = RequestHandler()
     app = Flask(__name__, static_folder='dist')
-    CORS(app)
     socketio = SocketIO(app, cors_allowed_origins="*")
     registerRenderable(root)
 
