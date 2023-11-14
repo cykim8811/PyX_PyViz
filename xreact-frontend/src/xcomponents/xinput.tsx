@@ -8,17 +8,11 @@ export function Xinput(props: any): JSX.Element {
     const serverValue = props.value;
     const serverOnChange = props.onChange || (() => {});
 
-    const [onChangeTimeout, setOnChangeTimeout] = useState<any>(null);
-
     const onChange = (e: any) => {
         setValue(e.target.value);
-        const newTimeout = setTimeout(() => {
+        setTimeout(() => {
             serverOnChange(e);
         }, 0);
-        if (onChangeTimeout !== null) {
-            clearTimeout(onChangeTimeout);
-        }
-        setOnChangeTimeout(newTimeout);
     };
 
     useEffect(() => {
