@@ -46,9 +46,42 @@ export async function convert(xelement: any): Promise<JSX.Element|string> {
     if (xelement.props === undefined) xelement.props = {};
     for (const key in xelement.props) {
         if (xelement.props[key].__call__ !== undefined) {
+			const preventDefault = xelement.props[key].preventDefault;
+			const stopPropagation = xelement.props[key].stopPropagation;
+			const returnFormat = xelement.props[key].returnFormat;
             const ftnId = xelement.props[key].__call__;
             xelement.props[key] = (...args: any[]) => {
-                args = args.map((arg) => serializable(arg, 3));
+				if (preventDefault) {
+					args[0].preventDefault();
+				}
+				if (stopPropagation) {
+					args[0].stopPropagation();
+				}
+				if (returnFormat !== undefined && Array.isArray(returnFormat)) {
+					// returnFormat: A format of return value
+					// ex) [{'clientX': true, 'clientY': true}, ...]
+					// If returnFormat is undefined, use serializable with depth 2
+					// getReturnFormat: Filter return value with returnFormat
+					// ex) returnFormat: [{'clientX': true, 'clientY': true, 'target': {'id': true}}]
+					// obj: {'clientX': 10, 'clientY': 20, 'target': {'id': 'abc', 'className': 'def'}}
+					// return: {'clientX': 10, 'clientY': 20, 'target': {'id': 'abc'}}
+					function getReturnFormat(obj: any, format: any): any {
+						const ret: any = {};
+						for (const key in format) {
+							if (typeof format[key] === 'boolean') {
+								if (format[key]) {
+									ret[key] = obj[key];
+								}
+							} else if (typeof format[key] === 'object') {
+								ret[key] = getReturnFormat(obj[key], format[key]);
+							}
+						}
+						return ret;
+					}
+					args = args.map((arg, i) => getReturnFormat(arg, returnFormat[i]));
+				} else {
+                args = args.map((arg) => serializable(arg, 2));
+				}
                 network.socket.emit('call', ftnId, ...args);
             }
         }

@@ -74,17 +74,23 @@ class User:
 
 renderableObjects = {}
 callableObjects = {}
-def createElement(tag, props, *children):
+def createElement(tag, props=None, *children):
+    if len(children) == 1 and type(children[0]) is list:
+        children = children[0]
+    if props is None:
+        props = {}
     for key in props:
         target = props[key]
-        if type(target) == type(lambda: 0):
+        if type(target) == type(lambda: 0) or type(target) == type(lambda: 0).__call__:
             callableObjects[id(target)] = target
-            props[key] = {'__call__': id(target)}
+            props[key] = {'__call__': id(target), 'preventDefault': target.preventDefault if hasattr(target, 'preventDefault') else False, 'stopPropagation': target.stopPropagation if hasattr(target, 'stopPropagation') else False, 'returnFormat': target.returnFormat if hasattr(target, 'returnFormat') else None}
     children = list(children)
     for i in range(len(children)):
         if hasattr(children[i], '__render__'):
             registerRenderable(children[i])
             children[i] = id(children[i])
+        elif type(children[i]) is int:
+            children[i] = str(children[i])
     return {
         'tag': tag,
         'props': props,
@@ -92,7 +98,7 @@ def createElement(tag, props, *children):
     }
 
 
-from flask import Flask, request
+from flask import Flask, request, Response
 from flask_socketio import SocketIO
 from flask_cors import CORS
 import json
@@ -114,9 +120,19 @@ class RequestHandler:
     def __getitem__(self, event):
         return self.requests[event]
 
+import sys
+import inspect
+import os
+
 def host(root, port):
     requestHandler = RequestHandler()
-    app = Flask(__name__, static_folder='dist')
+
+    frame = inspect.stack()[1]
+    module = inspect.getmodule(frame[0])
+    dir_path = os.path.dirname(os.path.abspath(module.__file__))
+
+
+    app = Flask(__name__, static_folder=dir_path+'/dist')
     socketio = SocketIO(app, cors_allowed_origins="*")
     registerRenderable(root)
 
@@ -134,6 +150,16 @@ def host(root, port):
     @app.route('/<path:path>')
     def serve_dist(path):
         return app.send_static_file(path)
+    
+    @app.route('/engine.js')
+    def serve_engine():
+        dir_path = os.path.dirname(os.path.abspath(__file__))
+        with open(dir_path+'/dist/engine.js') as f:
+            content = f.read()
+        return Response(content, mimetype='application/javascript')
+        
+        
+
 
     @requestHandler.on('root')
     def getRoot():
@@ -147,15 +173,23 @@ def host(root, port):
 
     @socketio.on('call')
     def call(ftnId, *args):
+        global pendingRender
         user = getUser(request.sid)
         if ftnId not in callableObjects: return None
         ret = callableObjects[ftnId](*args)
-        for renderable_id in pendingRender:
-            if pendingRender[renderable_id] == []:
-                pendingRender[renderable_id] = list(userList.keys())
-            for user_id in pendingRender[renderable_id]:
-                ret = getUser(user_id).render(renderableObjects[renderable_id])
-                socketio.emit('render', {'id': renderable_id, 'data': ret}, room=user_id)
+        while len(pendingRender) > 0:
+            current_render = pendingRender
+            pendingRender = {}
+            for renderable_id in current_render:
+                if current_render[renderable_id] == []:
+                    current_render[renderable_id] = list(userList.keys())
+                for user_id in current_render[renderable_id]:
+                    if renderable_id not in renderableObjects:
+                        import ctypes
+                        print("RENDERABLE NOT FOUND", renderable_id, ctypes.cast(renderable_id, ctypes.py_object).value)
+                        continue
+                    ret = getUser(user_id).render(renderableObjects[renderable_id])
+                    socketio.emit('render', {'id': renderable_id, 'data': ret}, room=user_id)
         pendingRender.clear()
         return ret
 
