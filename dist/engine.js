@@ -10996,7 +10996,9 @@ function XReactComponent({ xobject }) {
 function App() {
   const [root, setRoot] = reactExports.useState(null);
   reactExports.useEffect(() => {
-    network.requestConst("root").then((rootId) => {
+    const queryParams = new URLSearchParams(window.location.search);
+    const roomname = queryParams.get("room");
+    network.requestConst("root", roomname).then((rootId) => {
       if (rootId === null)
         return;
       setRoot(/* @__PURE__ */ jsxRuntimeExports.jsx(XReactComponent, { xobject: new XObject(rootId, network) }));
@@ -11011,4 +11013,4 @@ const index = "";
 client.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
 );
-//# sourceMappingURL=index-09e0165f.js.map
+//# sourceMappingURL=index-354333c9.js.map

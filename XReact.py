@@ -50,6 +50,9 @@ class User:
         if key not in self.dependencies: return
         for dependency in self.dependencies[key]:
             registerPendingRender(dependency, self.__dict__['sid'])
+    
+    def __contains__(self, key):
+        return key in self.data
 
     def __getitem__(self, key):
         __currentRender = self.__dict__['__currentRender']
@@ -84,7 +87,9 @@ def createElement(tag, props=None, *children):
         if type(target) == type(lambda: 0) or type(target) == type(lambda: 0).__call__:
             callableObjects[id(target)] = target
             props[key] = {'__call__': id(target), 'preventDefault': target.preventDefault if hasattr(target, 'preventDefault') else False, 'stopPropagation': target.stopPropagation if hasattr(target, 'stopPropagation') else False, 'returnFormat': target.returnFormat if hasattr(target, 'returnFormat') else None}
-    children = list(children)
+            if not hasattr(target, 'returnFormat'):
+                print('WARNING: No returnFormat specified for', target)
+    children = [child for child in children if child is not None]
     for i in range(len(children)):
         if hasattr(children[i], '__render__'):
             registerRenderable(children[i])
@@ -124,7 +129,17 @@ import sys
 import inspect
 import os
 
-def host(root, port):
+roots = {}
+root_refcount = {}
+
+def get_room(name, root_generator=None):
+    if name not in roots:
+        roots[name] = root_generator()
+        registerRenderable(roots[name])
+    return roots[name]
+
+
+def host(root_generator, port):
     requestHandler = RequestHandler()
 
     frame = inspect.stack()[1]
@@ -134,7 +149,6 @@ def host(root, port):
 
     app = Flask(__name__, static_folder=dir_path+'/dist')
     socketio = SocketIO(app, cors_allowed_origins="*")
-    registerRenderable(root)
 
     userList = {}
 
@@ -145,6 +159,7 @@ def host(root, port):
 
     @app.route('/')
     def index():
+        if request.args.get('room') is None: return 'No room specified'
         return app.send_static_file('index.html')
     
     @app.route('/<path:path>')
@@ -157,13 +172,14 @@ def host(root, port):
         with open(dir_path+'/dist/engine.js') as f:
             content = f.read()
         return Response(content, mimetype='application/javascript')
-        
-        
-
 
     @requestHandler.on('root')
-    def getRoot():
-        return id(root)
+    def getRoot(roomname):
+        user = getUser(request.sid)
+        if 'room' not in user.data:
+            user['room'] = get_room(roomname, root_generator)
+            root_refcount[roomname] = root_refcount[roomname] + 1 if roomname in root_refcount else 1
+        return id(user.room)
 
     @requestHandler.on('render')
     def render(id):
@@ -198,4 +214,22 @@ def host(root, port):
         res = requestHandler[event](*args)
         socketio.emit('response', {'requestId': requestId, 'data': json.dumps(res)}, room=request.sid)
 
+    @socketio.on('disconnect')
+    def disconnect():
+        user = getUser(request.sid)
+        if request.sid in userList:
+            if 'room' in user:
+                # Find id of user['room']
+                room_id = None
+                for id in roots:
+                    if roots[id] == user['room']:
+                        room_id = id
+                        break
+                if room_id is not None:
+                    root_refcount[room_id] -= 1
+                    if root_refcount[room_id] == 0:
+                        del roots[room_id]
+                        del root_refcount[room_id]
+            del userList[request.sid]
+            
     socketio.run(app, host='0.0.0.0', port=port)
