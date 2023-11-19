@@ -138,6 +138,10 @@ def get_room(name, root_generator=None):
         registerRenderable(roots[name])
     return roots[name]
 
+import randomname
+
+def get_random_room_name():
+    return randomname.get_name()
 
 def host(root_generator, port):
     requestHandler = RequestHandler()
@@ -159,7 +163,9 @@ def host(root_generator, port):
 
     @app.route('/')
     def index():
-        if request.args.get('room') is None: return 'No room specified'
+        if request.args.get('room') is None:
+            return f'<script>window.location.href = "/?room={get_random_room_name()}";</script>'
+            
         return app.send_static_file('index.html')
     
     @app.route('/<path:path>')
@@ -178,6 +184,9 @@ def host(root_generator, port):
         user = getUser(request.sid)
         if 'room' not in user.data:
             user['room'] = get_room(roomname, root_generator)
+            user['roomname'] = roomname
+            if roomname not in root_refcount:
+                print(f"Room created: {roomname:3s} - {root_refcount}")
             root_refcount[roomname] = root_refcount[roomname] + 1 if roomname in root_refcount else 1
         return id(user.room)
 
@@ -219,17 +228,13 @@ def host(root_generator, port):
         user = getUser(request.sid)
         if request.sid in userList:
             if 'room' in user:
-                # Find id of user['room']
-                room_id = None
-                for id in roots:
-                    if roots[id] == user['room']:
-                        room_id = id
-                        break
+                room_id = user['roomname'] if 'roomname' in user else None
                 if room_id is not None:
                     root_refcount[room_id] -= 1
                     if root_refcount[room_id] == 0:
                         del roots[room_id]
                         del root_refcount[room_id]
+                        print(f"Room deleted: {room_id:3s} - {root_refcount}")
             del userList[request.sid]
             
     socketio.run(app, host='0.0.0.0', port=port)
